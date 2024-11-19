@@ -1,35 +1,27 @@
-//Guardamos a mano el paquete express, el que nos permite use node como api
 const express = require("express");
-//Creamos una instancia con la que trabajar
 const api = express();
-
-//Donde guardamos los datos de la conexión a la base de datos
 const dbConnection = require("./db/connection");
-
-//Permite hacer peticiones desde otras url o dominios
 const cors = require("cors");
-//
 const corsOptions = {
-  origin: "http://localhost:5173", //origen que permitimos(front-end)
-  methods: "GET,POST,PUT,DELETE", //las acciones que permitimos
+  origin: "http://localhost:5173",
+  methods: "GET,POST,PUT,DELETE",
   allowedHeaders: "Content-Type,Authorization",
 };
 api.use(cors(corsOptions));
 
-const regExNombre = new RegExp(/^[a-zA-Z\s]*$/);
-//Prueba de api ("ruta",función(peticion(entrada de datos),respuesta(salida de datos)))
+const REGEXNOMBRE = new RegExp(/^[a-zA-Z\s]*$/);
+const TAMANHOPAG = 20;
+
 api.get("/", (request, response) => {
   response.send("Hola mundo");
 });
 
-//async marca que una funcion tiene await, await detiene el programa hasta obtener lo establecido
-api.get("/conjuros", async (req, res) => {
-  const filtros = req.query;
+function checkConjurosWhere(filtros) {
   let vars = [];
   let errores = {};
 
   if (filtros.nombreConjuro !== undefined && filtros.nombreConjuro !== "") {
-    if (regExNombre.test(filtros.nombreConjuro)) {
+    if (REGEXNOMBRE.test(filtros.nombreConjuro)) {
       vars.push(`nombre_conjuro LIKE "%${filtros.nombreConjuro}%"`);
     } else {
       errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
@@ -144,30 +136,37 @@ api.get("/conjuros", async (req, res) => {
     default:
       errores["errRitual"] = "Solo se permiten los valores base";
   }
+  let query = "";
 
-  vars = vars.join(" AND ");
+  if (vars.length != 0) {
+    query = " WHERE " + vars.join(" AND ");
+  }
+  return { query, errores };
+}
+
+api.get("/conjuros", async (req, res) => {
+  const { query, errores } = checkConjurosWhere(req.query);
 
   let connect;
   try {
     connect = await dbConnection.getConnection();
+
     const base =
       "SELECT c.id_conjuro, c.nombre_conjuro, c.nivel_conjuro, c.rango_area, c.somatico, c.verbal, c.material, c.duracion, c.concentracion, c.ritual , c.imagen_conjuro, c.desc_corta, em.nombre_escuela, tl.nombre_tiempo, al.nombre_alcance  FROM dramones_y_mazmorras.Conjuros c  JOIN dramones_y_mazmorras.EscuelasMagia em  on c.escuela_magia = em.id_clase JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz = tl.id_tiempo  JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.alcance  = al.id_alcance";
 
-    let final;
-
     if (Object.keys(errores).length == 0) {
-      if (vars == "") {
-        final = base;
-      } else {
-        final = base + " WHERE " + vars;
-      }
-      const fila = await connect.query(final);
+      const fila = await connect.query(
+        base +
+          query +
+          " LIMIT " +
+          (req.query.pagina - 1) * TAMANHOPAG +
+          "," +
+          TAMANHOPAG
+      );
       res.json(fila);
     } else {
       res.status(400).json(errores);
     }
-    console.log(errores);
-    console.log(Object.keys(errores).length);
   } catch (err) {
     console.log(err);
     res.status(500).send("Error al obtener los usuarios");
@@ -177,15 +176,40 @@ api.get("/conjuros", async (req, res) => {
 });
 
 api.get("/conjuros/:ID", async (req, res) => {
-  const ID = req.params.ID;
   let connect;
   try {
     connect = await dbConnection.getConnection();
     const fila = await connect.query(
-      "SELECT c.ID_conjuro, c.Nombre_conjuro, c.Nivel_conjuro, c.RangoArea, c.Somatico, c.Verbal, c.Material, c.Duracion, c.Concentracion, c.Ritual, c.Imagen_conjuro, c.DescCorta, em.Nombre_escuela, tl.Nombre_lanzamiento, al.Nombre_Alcance  FROM dramones_y_mazmorras.Conjuros c  JOIN dramones_y_mazmorras.EscuelasMagia em  on c.Escuela_Magia = em.ID_clase JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.TiempoLanz  = tl.ID_Lanzamiento JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.Alcance  = al.ID_Alcance WHERE ID_conjuro = ?;",
-      [ID]
+      "SELECT c.ID_conjuro, c.Nombre_conjuro, c.Nivel_conjuro, c.rango_area, c.Somatico, c.Verbal, c.Material, c.Duracion, c.Concentracion, c.Ritual, c.Imagen_conjuro, c.desc_corta, em.Nombre_escuela, tl.nombre_tiempo, al.Nombre_Alcance  FROM dramones_y_mazmorras.Conjuros c  JOIN dramones_y_mazmorras.EscuelasMagia em  on c.Escuela_Magia = em.ID_clase JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz  = tl.id_tiempo JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.Alcance  = al.ID_Alcance WHERE ID_conjuro =" +
+        req.params.ID
     );
     res.json(fila);
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+});
+
+api.get("/conjurosCount", async (req, res) => {
+  console.log(req.query);
+  const { query, errores } = checkConjurosWhere(req.query);
+
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+    const base =
+      "SELECT COUNT(*) as total FROM dramones_y_mazmorras.Conjuros c  JOIN dramones_y_mazmorras.EscuelasMagia em  on c.escuela_magia = em.id_clase JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz = tl.id_tiempo JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.alcance  = al.id_alcance";
+
+    if (Object.keys(errores).length == 0) {
+      const fila = await connect.query(base + query);
+      const countNumber = Number(fila[0]["total"]);
+      const final = Math.ceil(countNumber / TAMANHOPAG);
+      res.json(final);
+    } else {
+      res.status(400).json(errores);
+    }
   } catch (err) {
     console.log(err);
     res.status(500).send("Error al obtener los usuarios");
