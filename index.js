@@ -1,4 +1,6 @@
 const express = require("express");
+const multer = require("multer");
+
 const api = express();
 const dbConnection = require("./db/connection");
 const cors = require("cors");
@@ -8,6 +10,20 @@ const corsOptions = {
   allowedHeaders: "Content-Type,Authorization",
 };
 api.use(cors(corsOptions));
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "imagenes/conjuros/"); //
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname); //
+  },
+});
+
+const upload = multer({ storage: storage }); //instancia, new multer
+
+api.use(express.urlencoded({ extended: true }));
+api.use(express.json());
 
 const REGEXNOMBRE = new RegExp(/^[a-zA-Z\s]*$/);
 const TAMANHOPAG = 20;
@@ -144,6 +160,133 @@ function checkConjurosWhere(filtros) {
   return { query, errores };
 }
 
+function checkConjurosAdd(filtros) {
+  let errores = {};
+
+  if (filtros.nombreConjuro !== undefined && filtros.nombreConjuro !== "") {
+    if (REGEXNOMBRE.test(filtros.nombreConjuro)) {
+      vars.push(`nombre_conjuro LIKE "%${filtros.nombreConjuro}%"`);
+    } else {
+      errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
+    }
+  }
+
+  if (filtros.nivelConjuro !== undefined && filtros.nivelConjuro != "") {
+    if (filtros.nivelConjuro >= 0 && filtros.nivelConjuro <= 7) {
+      vars.push(`nivel_conjuro = ${filtros.nivelConjuro}`);
+    } else {
+      errores["errNivelConjuro"] = "Solo se permiten los valores base";
+    }
+  }
+
+  if (filtros.escuelaMagia !== undefined && filtros.escuelaMagia != "") {
+    if (filtros.escuelaMagia >= 0 && filtros.escuelaMagia <= 8) {
+      vars.push(`escuela_magia = ${filtros.escuelaMagia}`);
+    } else {
+      errores["errEscuelaMagia"] = "Solo se permiten los valores base";
+    }
+  }
+
+  if (
+    filtros.tiempoLanzamiento !== undefined &&
+    filtros.tiempoLanzamiento != ""
+  ) {
+    if (filtros.tiempoLanzamiento >= 0 && filtros.tiempoLanzamiento <= 9) {
+      vars.push(`tiempo_lanz = ${filtros.tiempoLanzamiento}`);
+    } else {
+      errores["errTiempoLanzamiento"] = "Solo se permiten los valores base";
+    }
+  }
+
+  if (
+    filtros.alcanceLanzamiento !== undefined &&
+    filtros.alcanceLanzamiento != ""
+  ) {
+    if (filtros.alcanceLanzamiento >= 0 && filtros.alcanceLanzamiento <= 9) {
+      vars.push(`alcance = ${filtros.alcanceLanzamiento}`);
+    } else {
+      errores["errAlcanceLanzamiento"] = "Solo se permiten los valores base";
+    }
+  }
+
+  switch (filtros.somatico) {
+    case "":
+      break;
+    case undefined:
+      break;
+    case "0":
+      vars.push("somatico = 0");
+      break;
+    case "1":
+      vars.push("somatico = 1");
+      break;
+    default:
+      errores["errSomatico"] = "Solo se permiten los valores base";
+  }
+  switch (filtros.verbal) {
+    case "":
+      break;
+    case undefined:
+      break;
+    case "0":
+      vars.push("verbal = 0");
+      break;
+    case "1":
+      vars.push("verbal = 1");
+      break;
+    default:
+      errores["errVerbal"] = "Solo se permiten los valores base";
+  }
+  switch (filtros.material) {
+    case "":
+      break;
+    case undefined:
+      break;
+    case "0":
+      vars.push("material = 0");
+      break;
+    case "1":
+      vars.push("material = 1");
+      break;
+    default:
+      errores["errMaterial"] = "Solo se permiten los valores base";
+  }
+  switch (filtros.concentracion) {
+    case "":
+      break;
+    case undefined:
+      break;
+    case "0":
+      vars.push("concentracion = 0");
+      break;
+    case "1":
+      vars.push("concentracion = 1");
+      break;
+    default:
+      errores["errConcentracion"] = "Solo se permiten los valores base";
+  }
+  switch (filtros.ritual) {
+    case "":
+      break;
+    case undefined:
+      break;
+    case "0":
+      vars.push("ritual = 0");
+      break;
+    case "1":
+      vars.push("ritual = 1");
+      break;
+    default:
+      errores["errRitual"] = "Solo se permiten los valores base";
+  }
+  let query = "";
+
+  if (vars.length != 0) {
+    query = " WHERE " + vars.join(" AND ");
+  }
+  return { query, errores };
+}
+
 api.get("/conjuros", async (req, res) => {
   const { query, errores } = checkConjurosWhere(req.query);
 
@@ -151,18 +294,26 @@ api.get("/conjuros", async (req, res) => {
   try {
     connect = await dbConnection.getConnection();
 
-    const base =
+    let base =
       "SELECT c.id_conjuro, c.nombre_conjuro, c.nivel_conjuro, c.rango_area, c.somatico, c.verbal, c.material, c.duracion, c.concentracion, c.ritual , c.imagen_conjuro, c.desc_corta, em.nombre_escuela, tl.nombre_tiempo, al.nombre_alcance  FROM dramones_y_mazmorras.Conjuros c  JOIN dramones_y_mazmorras.EscuelasMagia em  on c.escuela_magia = em.id_clase JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz = tl.id_tiempo  JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.alcance  = al.id_alcance";
 
+    filtrado = base + query;
+
+    if (req.query.orderBy != "") {
+      filtrado =
+        filtrado + " ORDER BY " + req.query.orderBy + " " + req.query.order;
+    }
+
+    filtrado =
+      filtrado +
+      " LIMIT " +
+      (req.query.pagina - 1) * TAMANHOPAG +
+      "," +
+      TAMANHOPAG;
+
+    console.log(filtrado);
     if (Object.keys(errores).length == 0) {
-      const fila = await connect.query(
-        base +
-          query +
-          " LIMIT " +
-          (req.query.pagina - 1) * TAMANHOPAG +
-          "," +
-          TAMANHOPAG
-      );
+      const fila = await connect.query(filtrado);
       res.json(fila);
     } else {
       res.status(400).json(errores);
@@ -173,6 +324,56 @@ api.get("/conjuros", async (req, res) => {
   } finally {
     if (connect) connect.end();
   }
+});
+
+api.get("/conjuros", async (req, res) => {
+  const { query, errores } = checkConjurosWhere(req.query);
+
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+
+    let base =
+      "SELECT c.id_conjuro, c.nombre_conjuro, c.nivel_conjuro, c.rango_area, c.somatico, c.verbal, c.material, c.duracion, c.concentracion, c.ritual , c.imagen_conjuro, c.desc_corta, em.nombre_escuela, tl.nombre_tiempo, al.nombre_alcance  FROM dramones_y_mazmorras.Conjuros c  JOIN dramones_y_mazmorras.EscuelasMagia em  on c.escuela_magia = em.id_clase JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz = tl.id_tiempo  JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.alcance  = al.id_alcance";
+
+    filtrado = base + query;
+
+    if (req.query.orderBy != "") {
+      filtrado =
+        filtrado + " ORDER BY " + req.query.orderBy + " " + req.query.order;
+    }
+
+    filtrado =
+      filtrado +
+      " LIMIT " +
+      (req.query.pagina - 1) * TAMANHOPAG +
+      "," +
+      TAMANHOPAG;
+
+    console.log(filtrado);
+    if (Object.keys(errores).length == 0) {
+      const fila = await connect.query(filtrado);
+      res.json(fila);
+    } else {
+      res.status(400).json(errores);
+    }
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+});
+
+api.post("/conjuros/add", upload.single("imagen"), async (req, res) => {
+  console.log(image);
+
+  const data = req.body;
+  const { originalname, path: filePath } = req.file;
+  console.log(data);
+  console.log(originalname);
+  console.log(filePath);
+  res.send("deseo el dulce abrazo de la muerte");
 });
 
 api.get("/conjuros/:ID", async (req, res) => {
