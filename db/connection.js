@@ -7,6 +7,7 @@ const pool = mariadb.createPool({
   password: "daw2pass",
   database: "dramones_y_mazmorras",
   port: "33006",
+  bigIntAsNumber: true, //evitar problemas con bigNumber
 });
 
 module.exports = pool;
