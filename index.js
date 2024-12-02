@@ -43,8 +43,18 @@ const { log } = require("console");
 
 const upload = multer({ storage: storage }); //instancia, new multer
 
-const REGEXTEXTO = new RegExp(/^[a-zA-Z\s]*$/);
-const REGEXTEXTONUM = new RegExp(/^[a-zA-Z0-9\s]*$/);
+const REGEXTEXTO = new RegExp(/^[a-zA-ZÀ-ÿñÑ\s]*$/);
+const REGEXTEXTONUM = new RegExp(/^[a-zA-ZÀ-ÿñÑ0-9\s]*$/);
+const REGEXTEXTOCORTDESC = new RegExp(/^[a-zA-ZÀ-ÿñÑ0-9().,\s]*$/);
+const REGEXTEXTOLARGDESC = new RegExp(/^[a-zA-ZÀ-ÿñÑ0-9().,:<>/\s]*$/);
+const REGEXNOMBRE = new RegExp(/^[a-zA-ZÀ-ÿñÑ0-9\s]{4,20}$/);
+const REGEXPASS = new RegExp(
+  /^(?=.*[0-9])(?=.*[-_*])(?=.*[A-ZÀ-ÿñ])(?=.*[a-zà-ÿñ])[a-zA-ZÀ-ÿñÑ0-9-_*]{4,20}$/
+);
+const REGEXEMAIL = new RegExp(
+  /^[a-zA-ZÀ-ÿñÑ0-9]+@[a-zA-ZÀ-ÿñÑ]+\.[a-zA-ZÀ-ÿñÑ]*$/
+);
+
 const TAMANHOPAG = 20;
 
 passport.use(
@@ -96,24 +106,26 @@ passport.deserializeUser(async (id_usuario, done) => {
 
 api.post("/register", async (req, res) => {
   const { emailUsuario, nombreUsuario, passUsuario } = req.body;
-  console.log(req.body);
-  const hashedPass = bcrypt.hashSync(passUsuario, 10);
+  const errores = await checkRegistro(req.body);
 
-  let connect;
-  try {
-    connect = await dbConnection.getConnection();
+  if (Object.keys(errores).length == 0) {
+    let connect;
+    try {
+      connect = await dbConnection.getConnection();
+      const hashedPass = bcrypt.hashSync(passUsuario, 10);
+      const a = await connect.query(
+        `INSERT INTO dramones_y_mazmorras.Usuarios (nombre_usuario, email_usuario, pass_usuario, rol_usuario) VALUES ("${nombreUsuario}","${emailUsuario}", "${hashedPass}", 2)`
+      );
+      res.status(200).send("Usuario registrado");
+    } catch (err) {
+      console.log(err);
 
-    const a = await connect.query(
-      `INSERT INTO dramones_y_mazmorras.Usuarios (nombre_usuario, email_usuario, pass_usuario, rol_usuario) VALUES ("${nombreUsuario}","${emailUsuario}", "${hashedPass}", 2)`
-    );
-    console.log(a);
-    res.status(200).send("Usuario registrado");
-  } catch (err) {
-    console.log(err);
-
-    res.status(500).send("Error al registrar usuario");
-  } finally {
-    if (connect) connect.end();
+      res.status(500).send("Error al registrar usuario");
+    } finally {
+      if (connect) connect.end();
+    }
+  } else {
+    res.status(400).json(errores);
   }
 });
 
@@ -161,6 +173,7 @@ api.get("/", (request, response) => {
   response.send("Hola mundo");
 });
 
+//checks----------------------------------------------------------------
 function checkConjurosWhere(data) {
   let vars = [];
   let errores = {};
@@ -292,23 +305,10 @@ function checkConjurosWhere(data) {
   return { query, errores };
 }
 
-async function checkConjurosAdd(data) {
+async function checkConjurosAddUpdate(data) {
   const body = data.body;
-  const imagen = await data.file;
 
   let errores = {};
-
-  if ((await checkNombreConjuro(body.nombreConjuro)) == -1) {
-    if (body.nombreConjuro != "") {
-      if (!REGEXTEXTO.test(body.nombreConjuro)) {
-        errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
-      }
-    } else {
-      errores["errNombreConjuro"] = "Este campo es obligatorio";
-    }
-  } else {
-    errores["errNombreConjuro"] = "Nombre repetido";
-  }
 
   if (body.nivelConjuro != "") {
     if (body.nivelConjuro <= 0 && body.nivelConjuro > 7) {
@@ -336,10 +336,10 @@ async function checkConjurosAdd(data) {
 
   if (body.alcanceLanzamiento != "") {
     if (body.alcanceLanzamiento <= 0 && body.alcanceLanzamiento > 3) {
-      errores["errTiempoLanzamiento"] = "Solo se permiten los valores base";
+      errores["errAlcanceLanzamiento"] = "Solo se permiten los valores base";
     }
   } else {
-    errores["errTiempoLanzamiento"] = "Este campo es obligatorio";
+    errores["errAlcanceLanzamiento"] = "Este campo es obligatorio";
   }
 
   if (body.rangoArea != "") {
@@ -370,13 +370,17 @@ async function checkConjurosAdd(data) {
     errores["errMaterial"] = "Solo se permiten los valores base";
   }
 
-  if (body.material == "true") {
+  if (body.material) {
     if (body.materialDesc != "") {
       if (!REGEXTEXTONUM.test(body.materialDesc)) {
         errores["errMaterialDesc"] = "Solo se permiten letras y numeros";
       }
     } else {
       errores["errMaterialDesc"] = "Este campo es obligatorio";
+    }
+  } else {
+    if (body.materialDesc != "") {
+      errores["errMaterialDesc"] = "Este campo tiene que estar vacio";
     }
   }
 
@@ -401,7 +405,7 @@ async function checkConjurosAdd(data) {
   }
 
   if (body.descCorta != "") {
-    if (!REGEXTEXTONUM.test(body.descCorta)) {
+    if (!REGEXTEXTOCORTDESC.test(body.descCorta)) {
       errores["errDescCorta"] = "Solo se permiten letras y numeros";
     }
   } else {
@@ -409,25 +413,43 @@ async function checkConjurosAdd(data) {
   }
 
   if (body.descLarga != "") {
-    if (!REGEXTEXTONUM.test(body.descLarga)) {
-      errores["errDescCorta"] = "Solo se permiten letras y numeros";
+    if (!REGEXTEXTOLARGDESC.test(body.descLarga)) {
+      errores["errDescLarga"] = "Solo se permiten letras y numeros";
     }
   } else {
-    errores["errDescCorta"] = "Este campo es obligatorio";
+    errores["errDescLarga"] = "Este campo es obligatorio";
   }
+
+  let claseMin = false;
 
   if (body.bardo != "true" && body.bardo != "false" && body.bardo != "") {
     errores["errBardo"] = "Solo se permiten los valores base";
   }
+  if (!claseMin && body.bardo == "true") {
+    claseMin = true;
+  }
+
   if (body.brujo != "true" && body.brujo != "false" && body.brujo != "") {
     errores["errBrujo"] = "Solo se permiten los valores base";
   }
+  if (!claseMin && body.brujo == "true") {
+    claseMin = true;
+  }
+
   if (body.clerigo != "true" && body.clerigo != "false" && body.clerigo != "") {
     errores["errClerigo"] = "Solo se permiten los valores base";
   }
+  if (!claseMin && body.clerigo == "true") {
+    claseMin = true;
+  }
+
   if (body.druida != "true" && body.druida != "false" && body.druida != "") {
     errores["errDruida"] = "Solo se permiten los valores base";
   }
+  if (!claseMin && body.druida == "true") {
+    claseMin = true;
+  }
+
   if (
     body.explorador != "true" &&
     body.explorador != "false" &&
@@ -435,6 +457,10 @@ async function checkConjurosAdd(data) {
   ) {
     errores["errExplorador"] = "Solo se permiten los valores base";
   }
+  if (!claseMin && body.explorador == "true") {
+    claseMin = true;
+  }
+
   if (
     body.hechicero != "true" &&
     body.hechicero != "false" &&
@@ -442,12 +468,73 @@ async function checkConjurosAdd(data) {
   ) {
     errores["errHechicero"] = "Solo se permiten los valores base";
   }
+  if (!claseMin && body.hechicero == "true") {
+    claseMin = true;
+  }
+
   if (body.mago != "true" && body.mago != "false" && body.mago != "") {
     errores["errMago"] = "Solo se permiten los valores base";
   }
+  if (!claseMin && body.mago == "true") {
+    claseMin = true;
+  }
+
   if (body.paladin != "true" && body.paladin != "false" && body.paladin != "") {
     errores["errPaladin"] = "Solo se permiten los valores base";
   }
+  if (!claseMin && body.paladin == "true") {
+    claseMin = true;
+  }
+
+  if (!claseMin) {
+    errores["errClase"] = "minimo una clase";
+  }
+
+  return errores;
+}
+
+async function checkNombreConjuroAdd(data, errores) {
+  const body = await data.body;
+
+  if (body.nombreConjuro != "") {
+    if (REGEXTEXTO.test(body.nombreConjuro)) {
+      if ((await checkNombreConjuro(body.nombreConjuro)) != -1) {
+        errores["errNombreConjuro"] = "Nombre repetido";
+      }
+    } else {
+      errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
+    }
+  } else {
+    errores["errNombreConjuro"] = "Este campo es obligatorio";
+  }
+
+  return errores;
+}
+
+async function checkNombreConjuroUpdate(data, errores) {
+  const body = await data.body;
+
+  const nombreAnterior = await getCheckNombreConjuro(body.idConjuro);
+
+  if (body.nombreConjuro != "") {
+    if (REGEXTEXTO.test(body.nombreConjuro)) {
+      if ((await checkNombreConjuro(body.nombreConjuro)) != -1) {
+        if (body.nombreConjuro != nombreAnterior) {
+          errores["errNombreConjuro"] = "Nombre repetido";
+        }
+      }
+    } else {
+      errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
+    }
+  } else {
+    errores["errNombreConjuro"] = "Este campo es obligatorio";
+  }
+
+  return errores;
+}
+
+async function checkImagen(data, errores) {
+  const imagen = await data.file;
 
   if (imagen !== undefined) {
     if (
@@ -460,10 +547,139 @@ async function checkConjurosAdd(data) {
   } else {
     errores["errImagen"] = "Este campo es obligatorio";
   }
+  return errores;
+}
+
+async function checkRegistro(data) {
+  //register
+  let errores = {};
+
+  if ((await checkNombreUsuario(data.nombreUsuario)) == -1) {
+    if (data.nombreUsuario != "") {
+      if (!REGEXNOMBRE.test(data.nombreUsuario)) {
+        errores["errNombreUsuario"] =
+          "Solo se permiten letras y numeros long entre 4 y 20";
+      }
+    } else {
+      errores["errNombreUsuario"] = "Este campo es obligatorio";
+    }
+  } else {
+    errores["errNombreUsuario"] = "Nombre repetido";
+  }
+
+  if ((await checkEmailUsuario(data.emailUsuario)) == -1) {
+    if (data.emailUsuario != "") {
+      if (!REGEXEMAIL.test(data.emailUsuario)) {
+        errores["errEmailUsuario"] = "correo apto";
+      }
+    } else {
+      errores["errEmailUsuario"] = "Este campo es obligatorio";
+    }
+  } else {
+    errores["errEmailUsuario"] = "Email repetido";
+  }
 
   return errores;
 }
 
+async function getCheckNombreConjuro(idConjuro) {
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+    const query = `SELECT nombre_conjuro FROM dramones_y_mazmorras.Conjuros WHERE id_conjuro = 
+      "${idConjuro}"`;
+
+    const fila = await connect.query(query);
+    return fila[0].nombre_conjuro;
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+}
+
+async function checkNombreConjuro(nombreConjuro) {
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+    const query = `SELECT c.id_conjuro FROM dramones_y_mazmorras.Conjuros c WHERE nombre_conjuro = 
+      "${nombreConjuro}"`;
+
+    const fila = await connect.query(query);
+
+    if (fila[0] == undefined) {
+      return -1;
+    } else {
+      return fila[0].id_conjuro;
+    }
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+}
+
+async function checkNombreUsuario(nombreUsuario) {
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+    const query = `SELECT id_usuario FROM dramones_y_mazmorras.Usuarios u WHERE nombre_usuario = 
+      "${nombreUsuario}"`;
+
+    const fila = await connect.query(query);
+    if (fila[0] == undefined) {
+      return -1;
+    } else {
+      return fila[0].nombre_usuario;
+    }
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+}
+
+async function checkEmailUsuario(emailUsuario) {
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+    const query = `SELECT id_usuario FROM dramones_y_mazmorras.Usuarios u WHERE email_usuario = 
+      "${emailUsuario}"`;
+
+    const fila = await connect.query(query);
+    if (fila[0] == undefined) {
+      return -1;
+    } else {
+      return fila[0].email_usuario;
+    }
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+}
+
+api.get("/conjuroPorClase/:ID", ensureRole([1, 2]), async (req, res) => {
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+    const fila = await connect.query(
+      `SELECT id_conj, id_clas FROM dramones_y_mazmorras.ConjurosPorClase WHERE id_conj = ${req.params.ID}`
+    );
+    res.json(fila);
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+});
+
+//principales
 api.get("/conjuros", ensureRole([1, 2]), async (req, res) => {
   const { query, errores } = checkConjurosWhere(req.query);
 
@@ -472,12 +688,11 @@ api.get("/conjuros", ensureRole([1, 2]), async (req, res) => {
     connect = await dbConnection.getConnection();
 
     let base =
-      "SELECT c.id_conjuro, c.nombre_conjuro, c.nivel_conjuro, c.rango_area, c.somatico, c.verbal, c.material, c.duracion, c.concentracion, c.ritual , c.imagen_conjuro, c.desc_corta, em.nombre_escuela, tl.nombre_tiempo, al.nombre_alcance  FROM dramones_y_mazmorras.Conjuros c  JOIN dramones_y_mazmorras.EscuelasMagia em  on c.escuela_magia = em.id_escuela JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz = tl.id_tiempo  JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.alcance  = al.id_alcance";
+      "SELECT c.id_conjuro, c.nombre_conjuro, c.rango_area, c.somatico, c.verbal, c.material, c.duracion, c.concentracion, c.ritual, c.imagen_conjuro, c.desc_corta, em.nombre_escuela, tl.nombre_tiempo, al.nombre_Alcance, nm.nombre_nivel FROM dramones_y_mazmorras.Conjuros c JOIN dramones_y_mazmorras.EscuelasMagia em  on c.Escuela_Magia = em.id_escuela JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz  = tl.id_tiempo JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.Alcance  = al.id_Alcance JOIN dramones_y_mazmorras.NivelesMagia nm  on c.nivel_conjuro  = nm.id_nivel";
 
     let orderLimit = "";
     if (req.query.orderBy != "") {
-      orderLimit =
-        filtrado + " ORDER BY " + req.query.orderBy + " " + req.query.order;
+      orderLimit = " ORDER BY " + req.query.orderBy + " " + req.query.order;
     }
 
     orderLimit =
@@ -514,24 +729,24 @@ api.post(
   upload.single("imagen"),
   async (req, res) => {
     const data = req.body;
-    console.log(data);
 
-    const errores = await checkConjurosAdd(req);
-    console.log(errores);
+    let errores = await checkConjurosAddUpdate(req);
+    errores = await checkNombreConjuroAdd(req, errores);
+    errores = await checkImagen(req, errores);
 
-    if (Object.keys(errores).length == 0) {
-      const { destination, path, mimetype } = req.file;
-      const tipoImagen = mimetype.split("/");
+    let connect;
+    try {
+      if (Object.keys(errores).length == 0) {
+        const { destination, path, mimetype } = req.file;
+        const tipoImagen = mimetype.split("/");
 
-      let nuevoNombre =
-        data.nombreConjuro.replace(" ", "_") + "." + tipoImagen[1];
+        let nuevoNombre =
+          data.nombreConjuro.replace(" ", "_") + "." + tipoImagen[1];
 
-      fs.rename(path, "imagenes\\conjuros\\" + nuevoNombre, () => {
-        console.log("\nFile Renamed!\n");
-      });
+        fs.rename(path, "imagenes\\conjuros\\" + nuevoNombre, () => {
+          console.log("\nFile Renamed!\n");
+        });
 
-      let connect;
-      try {
         connect = await dbConnection.getConnection();
         const destinoImagen = "/" + destination + nuevoNombre;
 
@@ -566,14 +781,13 @@ api.post(
 
         conjuroAdd = `${conjuroAdd}, "${destinoImagen}", "${data.descCorta}", "${data.descLarga}")`;
 
-        const fila = await connect.query(conjuroAdd);
+        const filaConjuro = await connect.query(conjuroAdd);
         //res.send(fila.warningStatus.toString());
 
         idActual = await checkNombreConjuro(data.nombreConjuro);
-        console.log(idActual);
-        console.log(data);
 
-        let conjuroClase = "";
+        let conjuroClase =
+          "INSERT INTO dramones_y_mazmorras.ConjurosPorClase (id_conj, id_clas) VALUES";
         if (data.bardo == "true") {
           conjuroClase = conjuroClase + `(${idActual},1),`;
         }
@@ -598,28 +812,143 @@ api.post(
         if (data.paladin == "true") {
           conjuroClase = conjuroClase + `(${idActual},8),`;
         }
-        if (conjuroClase.length > 0) {
-        }
+
         conjuroClase = conjuroClase.slice(0, -1);
-        console.log(conjuroClase);
-      } catch (err) {
-        console.log(err);
-        res.status(500).send("Error al obtener los usuarios");
-      } finally {
-        if (connect) connect.end();
+        const filaClase = await connect.query(conjuroClase);
+      } else {
+        if (req.file != undefined) {
+          const { originalname, destination } = req.file;
+          fs.unlink(destination + originalname, (err) => {
+            if (err) {
+              console.error(`Error removing file: ${err}`);
+              return;
+            }
+          });
+        }
+        res.status(400).json(errores);
       }
-    } else {
-      if (req.file) {
-        const { originalname, destination } = req.file;
-        fs.unlink(destination + originalname, (err) => {
-          if (err) {
-            console.error(`Error removing file: ${err}`);
-            return;
-          }
-        });
-      }
+    } catch (err) {
+      console.log(err);
+      res.status(500).send("Error al obtener los usuarios");
+    } finally {
+      if (connect) connect.end();
     }
-    res.send("a");
+  }
+);
+
+api.post(
+  "/conjuros/update/:ID",
+  ensureRole([1]),
+  upload.single("imagen"),
+  async (req, res) => {
+    const data = req.body;
+
+    let errores = await checkConjurosAddUpdate(req);
+    errores = await checkNombreConjuroUpdate(req, errores);
+    if (req.file != undefined) {
+      errores = await checkImagen(req, errores);
+    }
+
+    console.log(req.file);
+
+    let connect;
+    try {
+      if (Object.keys(errores).length == 0) {
+        console.log(errores);
+
+        connect = await dbConnection.getConnection();
+
+        console.log(data);
+
+        let conjuroUpdate = `UPDATE dramones_y_mazmorras.Conjuros SET nombre_conjuro="${data.nombreConjuro}", nivel_conjuro=${data.nivelConjuro}, escuela_magia=${data.escuelaMagia}, tiempo_lanz=${data.tiempoLanzamiento}, alcance=${data.alcanceLanzamiento}, rango_area="${data.rangoArea}", somatico=${data.somatico}, verbal=${data.verbal}, material=${data.material}`;
+
+        if (data.materialDesc == null) {
+          ``;
+          conjuroUpdate = conjuroUpdate + ",material_desc=" + null;
+        } else {
+          conjuroUpdate =
+            conjuroUpdate + `,material_desc="${data.materialDesc}"`;
+        }
+
+        conjuroUpdate =
+          conjuroUpdate +
+          `, duracion="${data.duracion}", concentracion=${data.concentracion}, ritual=${data.ritual}, desc_corta="${data.descCorta}", desc_larga="${data.descLarga}"`;
+
+        if (req.file != undefined) {
+          const { originalname, destination, path, mimetype } = req.file;
+
+          fs.unlink(destination + originalname, (err) => {
+            if (err) {
+              console.error(`Error removing file: ${err}`);
+            }
+          });
+
+          const tipoImagen = mimetype.split("/");
+          let nuevoNombre =
+            data.nombreConjuro.replace(" ", "_") + "." + tipoImagen[1];
+
+          fs.rename(path, "imagenes\\conjuros\\" + nuevoNombre, () => {
+            console.log("\nFile Renamed!\n");
+          });
+
+          const destinoImagen = "/" + destination + nuevoNombre;
+
+          conjuroUpdate = conjuroUpdate + `, imagen_conjuro=${destinoImagen}`;
+        }
+        conjuroUpdate = conjuroUpdate + ` WHERE id_conjuro=${data.idConjuro}`;
+
+        const filaConjuroUpdate = await connect.query(conjuroUpdate);
+
+        let conjuroDeleteClase = `DELETE FROM dramones_y_mazmorras.ConjurosPorClase WHERE id_conj=${data.idConjuro}`;
+
+        const filaDeleteClase = await connect.query(conjuroDeleteClase);
+
+        let conjuroUpdateClase =
+          "INSERT INTO dramones_y_mazmorras.ConjurosPorClase (id_conj, id_clas) VALUES";
+        if (data.bardo == "true") {
+          conjuroUpdateClase = conjuroUpdateClase + `(${data.idConjuro},1),`;
+        }
+        if (data.brujo == "true") {
+          conjuroUpdateClase = conjuroUpdateClase + `(${data.idConjuro},2),`;
+        }
+        if (data.clerigo == "true") {
+          conjuroUpdateClase = conjuroUpdateClase + `(${data.idConjuro},3),`;
+        }
+        if (data.druida == "true") {
+          conjuroUpdateClase = conjuroUpdateClase + `(${data.idConjuro},4),`;
+        }
+        if (data.explorador == "true") {
+          conjuroUpdateClase = conjuroUpdateClase + `(${data.idConjuro},5),`;
+        }
+        if (data.hechicero == "true") {
+          conjuroUpdateClase = conjuroUpdateClase + `(${data.idConjuro},6),`;
+        }
+        if (data.mago == "true") {
+          conjuroUpdateClase = conjuroUpdateClase + `(${data.idConjuro},7),`;
+        }
+        if (data.paladin == "true") {
+          conjuroUpdateClase = conjuroUpdateClase + `(${data.idConjuro},8),`;
+        }
+
+        conjuroUpdateClase = conjuroUpdateClase.slice(0, -1);
+        const filaClase = await connect.query(conjuroUpdateClase);
+      } else {
+        if (req.file != undefined) {
+          const { originalname, destination } = req.file;
+          fs.unlink(destination + originalname, (err) => {
+            if (err) {
+              console.error(`Error removing file: ${err}`);
+            }
+          });
+        }
+        res.status(400).json(errores);
+      }
+    } catch (err) {
+      console.log(err);
+      res.status(500).send("Error al obtener los usuarios");
+    } finally {
+      if (connect) connect.end();
+    }
   }
 );
 
@@ -628,10 +957,14 @@ api.get("/conjuros/:ID", ensureRole([1, 2]), async (req, res) => {
   try {
     connect = await dbConnection.getConnection();
     const fila = await connect.query(
-      "SELECT c.ID_conjuro, c.Nombre_conjuro, c.Nivel_conjuro, c.rango_area, c.Somatico, c.Verbal, c.Material, c.Duracion, c.Concentracion, c.Ritual, c.Imagen_conjuro, c.desc_corta, em.Nombre_escuela, tl.nombre_tiempo, al.Nombre_Alcance  FROM dramones_y_mazmorras.Conjuros c  JOIN dramones_y_mazmorras.EscuelasMagia em  on c.Escuela_Magia = em.id_escuela JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz  = tl.id_tiempo JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.Alcance  = al.ID_Alcance WHERE ID_conjuro =" +
+      "SELECT * FROM dramones_y_mazmorras.Conjuros c JOIN dramones_y_mazmorras.EscuelasMagia em  on c.Escuela_Magia = em.id_escuela JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz  = tl.id_tiempo JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.Alcance  = al.id_Alcance JOIN dramones_y_mazmorras.NivelesMagia nm  on c.nivel_conjuro  = nm.id_nivel WHERE ID_conjuro =" +
         req.params.ID
     );
-    res.json(fila);
+    if (fila != "") {
+      res.json(fila);
+    } else {
+      res.send(fila);
+    }
   } catch (err) {
     console.log(err);
     res.status(500).send("Error al obtener los usuarios");
@@ -640,6 +973,7 @@ api.get("/conjuros/:ID", ensureRole([1, 2]), async (req, res) => {
   }
 });
 
+//Selects y varios
 api.get("/conjurosCount", ensureRole([1, 2]), async (req, res) => {
   const { query, errores } = checkConjurosWhere(req.query);
 
@@ -669,30 +1003,6 @@ api.get("/conjurosCount", ensureRole([1, 2]), async (req, res) => {
     if (connect) connect.end();
   }
 });
-
-async function checkNombreConjuro(nombreConjuro) {
-  let connect;
-  try {
-    connect = await dbConnection.getConnection();
-    const query = `SELECT c.id_conjuro FROM dramones_y_mazmorras.Conjuros c WHERE nombre_conjuro = 
-      "${nombreConjuro}"`;
-
-    const fila = await connect.query(query);
-
-    if (fila[0] == undefined) {
-      return -1;
-    } else {
-      console.log(fila[0].id_conjuro);
-
-      return fila[0].id_conjuro;
-    }
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Error al obtener los usuarios");
-  } finally {
-    if (connect) connect.end();
-  }
-}
 
 api.get("/escuelasMagia", ensureRole([1, 2]), async (req, res) => {
   let connect;
@@ -758,6 +1068,21 @@ api.get("/clasesMagia", ensureRole([1, 2]), async (req, res) => {
   }
 });
 
+api.get("/nivelesMagia", ensureRole([1, 2]), async (req, res) => {
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+    const fila = await connect.query(
+      "SELECT id_nivel, nombre_nivel FROM dramones_y_mazmorras.NivelesMagia;"
+    );
+    res.json(fila);
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+});
 //Puerto donde escucha node, siempre va al final.
 api.listen(3000, () => {
   console.log("Puerto 3000 inicializado");
