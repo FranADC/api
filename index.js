@@ -178,6 +178,8 @@ function checkConjurosWhere(data) {
   let vars = [];
   let errores = {};
 
+  console.log(data);
+
   if (data.nombreConjuro !== undefined && data.nombreConjuro !== "") {
     if (REGEXTEXTO.test(data.nombreConjuro)) {
       vars.push(`nombre_conjuro LIKE "%${data.nombreConjuro}%"`);
@@ -487,7 +489,7 @@ async function checkConjurosAddUpdate(data) {
   }
 
   if (!claseMin) {
-    errores["errClase"] = "minimo una clase";
+    errores["errClase"] = "Se necesita minimo una clase";
   }
 
   return errores;
@@ -499,7 +501,7 @@ async function checkNombreConjuroAdd(data, errores) {
   if (body.nombreConjuro != "") {
     if (REGEXTEXTO.test(body.nombreConjuro)) {
       if ((await checkNombreConjuro(body.nombreConjuro)) != -1) {
-        errores["errNombreConjuro"] = "Nombre repetido";
+        errores["errNombreConjuro"] = "Este nombre ya esta en uso";
       }
     } else {
       errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
@@ -520,7 +522,7 @@ async function checkNombreConjuroUpdate(data, errores) {
     if (REGEXTEXTO.test(body.nombreConjuro)) {
       if ((await checkNombreConjuro(body.nombreConjuro)) != -1) {
         if (body.nombreConjuro != nombreAnterior) {
-          errores["errNombreConjuro"] = "Nombre repetido";
+          errores["errNombreConjuro"] = "Este nombre ya esta en uso";
         }
       }
     } else {
@@ -542,7 +544,7 @@ async function checkImagen(data, errores) {
       imagen.mimetype !== "image/webp" &&
       imagen.mimetype !== "image/jpeg"
     ) {
-      errores["errImagen"] = "El archivo debe ser:png,webp,jpeg";
+      errores["errImagen"] = "Extensiones permitidas:png, webp, jpeg";
     }
   } else {
     errores["errImagen"] = "Este campo es obligatorio";
@@ -558,25 +560,25 @@ async function checkRegistro(data) {
     if (data.nombreUsuario != "") {
       if (!REGEXNOMBRE.test(data.nombreUsuario)) {
         errores["errNombreUsuario"] =
-          "Solo se permiten letras y numeros long entre 4 y 20";
+          "Solo se permiten nombres entre 4 y 20 caracteres validos (letras y numeros)";
       }
     } else {
       errores["errNombreUsuario"] = "Este campo es obligatorio";
     }
   } else {
-    errores["errNombreUsuario"] = "Nombre repetido";
+    errores["errNombreUsuario"] = "Este nombre ya esta en uso";
   }
 
   if ((await checkEmailUsuario(data.emailUsuario)) == -1) {
     if (data.emailUsuario != "") {
       if (!REGEXEMAIL.test(data.emailUsuario)) {
-        errores["errEmailUsuario"] = "correo apto";
+        errores["errEmailUsuario"] = "Este no es un correo apto";
       }
     } else {
       errores["errEmailUsuario"] = "Este campo es obligatorio";
     }
   } else {
-    errores["errEmailUsuario"] = "Email repetido";
+    errores["errEmailUsuario"] = "Este email ya esta en uso";
   }
 
   return errores;
@@ -688,7 +690,7 @@ api.get("/conjuros", ensureRole([1, 2]), async (req, res) => {
     connect = await dbConnection.getConnection();
 
     let base =
-      "SELECT c.id_conjuro, c.nombre_conjuro, c.rango_area, c.somatico, c.verbal, c.material, c.duracion, c.concentracion, c.ritual, c.imagen_conjuro, c.desc_corta, em.nombre_escuela, tl.nombre_tiempo, al.nombre_Alcance, nm.nombre_nivel FROM dramones_y_mazmorras.Conjuros c JOIN dramones_y_mazmorras.EscuelasMagia em  on c.Escuela_Magia = em.id_escuela JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz  = tl.id_tiempo JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.Alcance  = al.id_Alcance JOIN dramones_y_mazmorras.NivelesMagia nm  on c.nivel_conjuro  = nm.id_nivel";
+      "SELECT c.id_conjuro, c.nombre_conjuro, c.rango_area, c.somatico, c.verbal, c.material, c.duracion, c.concentracion, c.ritual, c.imagen_conjuro, c.desc_corta, c.material_desc, em.nombre_escuela, tl.nombre_tiempo, al.nombre_Alcance, nm.nombre_nivel FROM dramones_y_mazmorras.Conjuros c JOIN dramones_y_mazmorras.EscuelasMagia em  on c.Escuela_Magia = em.id_escuela JOIN dramones_y_mazmorras.TiemposLanzamiento tl  on c.tiempo_lanz  = tl.id_tiempo JOIN dramones_y_mazmorras.AlcanceLanzamiento al  on c.Alcance  = al.id_Alcance JOIN dramones_y_mazmorras.NivelesMagia nm  on c.nivel_conjuro  = nm.id_nivel";
 
     let orderLimit = "";
     if (req.query.orderBy != "") {
