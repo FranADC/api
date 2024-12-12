@@ -45,11 +45,9 @@ const upload = multer({ storage: storage }); //instancia, new multer
 
 const REGEXTEXTO = new RegExp(/^[a-zA-ZÀ-ÿñÑ\s]*$/);
 const REGEXTEXTONUM = new RegExp(/^[a-zA-ZÀ-ÿñÑ0-9\s]*$/);
-const REGEXTEXTOCORTDESC = new RegExp(/^[a-zA-ZÀ-ÿñÑ0-9().,\s]*$/);
-const REGEXTEXTOLARGDESC = new RegExp(/^[a-zA-ZÀ-ÿñÑ0-9().,:<>/\s]*$/);
 const REGEXNOMBRE = new RegExp(/^[a-zA-ZÀ-ÿñÑ0-9\s]{4,20}$/);
 const REGEXPASS = new RegExp(
-  /^(?=.*[0-9])(?=.*[-_*])(?=.*[A-ZÀ-ÿñ])(?=.*[a-zà-ÿñ])[a-zA-ZÀ-ÿñÑ0-9-_*]{4,20}$/
+  /^(?=.*[0-9])(?=.*[A-ZÀ-ÿñ])(?=.*[a-zà-ÿñ])[a-zA-ZÀ-ÿñÑ0-9-]{4,20}$/
 );
 const REGEXEMAIL = new RegExp(
   /^[a-zA-ZÀ-ÿñÑ0-9]+@[a-zA-ZÀ-ÿñÑ]+\.[a-zA-ZÀ-ÿñÑ]*$/
@@ -108,24 +106,26 @@ api.post("/register", async (req, res) => {
   const { emailUsuario, nombreUsuario, passUsuario } = req.body;
   const errores = await checkRegistro(req.body);
 
-  if (Object.keys(errores).length == 0) {
-    let connect;
-    try {
+  let connect;
+  try {
+    if (Object.keys(errores).length == 0) {
       connect = await dbConnection.getConnection();
       const hashedPass = bcrypt.hashSync(passUsuario, 10);
       const a = await connect.query(
-        `INSERT INTO dramones_y_mazmorras.Usuarios (nombre_usuario, email_usuario, pass_usuario, rol_usuario) VALUES ("${nombreUsuario}","${emailUsuario}", "${hashedPass}", 2)`
+        `INSERT INTO dramones_y_mazmorras.Usuarios (nombre_usuario, email_usuario, pass_usuario, rol_usuario) VALUES ("${nombreUsuario.trim()}","${emailUsuario.trim()}", "${hashedPass}", 2)`
       );
       res.status(200).send("Usuario registrado");
-    } catch (err) {
-      console.log(err);
+    } else {
+      console.log(errores);
 
-      res.status(500).send("Error al registrar usuario");
-    } finally {
-      if (connect) connect.end();
+      res.status(400).json(errores);
     }
-  } else {
-    res.status(400).json(errores);
+  } catch (err) {
+    console.log(err);
+
+    res.status(500).send("Error al registrar usuario");
+  } finally {
+    if (connect) connect.end();
   }
 });
 
@@ -184,7 +184,7 @@ function checkConjurosWhere(data) {
     if (REGEXTEXTO.test(data.nombreConjuro)) {
       vars.push(`nombre_conjuro LIKE "%${data.nombreConjuro}%"`);
     } else {
-      errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
+      errores["errNombreConjuro"] = "Solo se permiten letras.";
     }
   }
 
@@ -344,12 +344,12 @@ async function checkConjurosAddUpdate(data) {
     errores["errAlcanceLanzamiento"] = "Este campo es obligatorio";
   }
 
-  if (body.rangoArea != "") {
-    if (!REGEXTEXTONUM.test(body.rangoArea)) {
-      errores["errRangoArea"] = "Solo se permiten letras y numeros";
+  if (!body.rangoArea.includes('"')) {
+    if (body.rangoArea == "") {
+      errores["errRangoArea"] = "Este campo es obligatorio";
     }
   } else {
-    errores["errRangoArea"] = "Este campo es obligatorio";
+    errores["errRangoArea"] = 'No se permite el uso de ""';
   }
 
   if (
@@ -372,16 +372,22 @@ async function checkConjurosAddUpdate(data) {
     errores["errMaterial"] = "Solo se permiten los valores base";
   }
 
-  if (body.material) {
-    if (body.materialDesc != "") {
-      if (!REGEXTEXTONUM.test(body.materialDesc)) {
-        errores["errMaterialDesc"] = "Solo se permiten letras y numeros";
+  console.log("materiales");
+  console.log(body.material);
+  console.log(body.materialDesc);
+  console.log(typeof body.material);
+  console.log(typeof body.materialDesc);
+
+  if (body.material == "true") {
+    if (!body.materialDesc.includes('"')) {
+      if (body.materialDesc == "") {
+        errores["errMaterialDesc"] = "Este campo es obligatorio";
       }
     } else {
-      errores["errMaterialDesc"] = "Este campo es obligatorio";
+      errores["errMaterialDesc"] = 'No se permite el uso de ""';
     }
   } else {
-    if (body.materialDesc != "") {
+    if (body.materialDesc != "" && body.materialDesc != "null") {
       errores["errMaterialDesc"] = "Este campo tiene que estar vacio";
     }
   }
@@ -406,20 +412,20 @@ async function checkConjurosAddUpdate(data) {
     errores["errRitual"] = "Solo se permiten los valores base";
   }
 
-  if (body.descCorta != "") {
-    if (!REGEXTEXTOCORTDESC.test(body.descCorta)) {
-      errores["errDescCorta"] = "Solo se permiten letras y numeros";
+  if (!body.descCorta.includes('"')) {
+    if (body.descCorta == "") {
+      errores["errDescCorta"] = "Este campo es obligatorio";
     }
   } else {
-    errores["errDescCorta"] = "Este campo es obligatorio";
+    errores["errDescCorta"] = 'No se permite el uso de ""';
   }
 
-  if (body.descLarga != "") {
-    if (!REGEXTEXTOLARGDESC.test(body.descLarga)) {
-      errores["errDescLarga"] = "Solo se permiten letras y numeros";
+  if (!body.descLarga.includes('"')) {
+    if (body.descLarga == "") {
+      errores["errDescLarga"] = "Este campo es obligatorio";
     }
   } else {
-    errores["errDescLarga"] = "Este campo es obligatorio";
+    errores["errDescLarga"] = 'No se permite el uso de ""';
   }
 
   let claseMin = false;
@@ -504,7 +510,7 @@ async function checkNombreConjuroAdd(data, errores) {
         errores["errNombreConjuro"] = "Este nombre ya esta en uso";
       }
     } else {
-      errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
+      errores["errNombreConjuro"] = "Solo se permiten letras.";
     }
   } else {
     errores["errNombreConjuro"] = "Este campo es obligatorio";
@@ -526,7 +532,7 @@ async function checkNombreConjuroUpdate(data, errores) {
         }
       }
     } else {
-      errores["errNombreConjuro"] = "Solo se permiten letras y numeros";
+      errores["errNombreConjuro"] = "Solo se permiten letras.";
     }
   } else {
     errores["errNombreConjuro"] = "Este campo es obligatorio";
@@ -556,29 +562,51 @@ async function checkRegistro(data) {
   //register
   let errores = {};
 
-  if ((await checkNombreUsuario(data.nombreUsuario)) == -1) {
-    if (data.nombreUsuario != "") {
-      if (!REGEXNOMBRE.test(data.nombreUsuario)) {
-        errores["errNombreUsuario"] =
-          "Solo se permiten nombres entre 4 y 20 caracteres validos (letras y numeros)";
+  if (!data.nombreUsuario.includes('"')) {
+    if ((await checkNombreUsuario(data.nombreUsuario)) == -1) {
+      if (data.nombreUsuario != "") {
+        if (!REGEXNOMBRE.test(data.nombreUsuario)) {
+          errores["errNombreUsuario"] =
+            "Solo se permiten nombres entre 4 y 20 caracteres validos (letras y numeros)";
+        }
+      } else {
+        errores["errNombreUsuario"] = "Este campo es obligatorio";
       }
     } else {
-      errores["errNombreUsuario"] = "Este campo es obligatorio";
+      errores["errNombreUsuario"] = "Este nombre ya esta en uso";
     }
   } else {
-    errores["errNombreUsuario"] = "Este nombre ya esta en uso";
+    errores["errNombreUsuario"] = 'No se permite el uso de ""';
   }
 
-  if ((await checkEmailUsuario(data.emailUsuario)) == -1) {
-    if (data.emailUsuario != "") {
-      if (!REGEXEMAIL.test(data.emailUsuario)) {
-        errores["errEmailUsuario"] = "Este no es un correo apto";
+  if (!data.emailUsuario.includes('"')) {
+    if ((await checkEmailUsuario(data.emailUsuario)) == -1) {
+      if (data.emailUsuario != "") {
+        if (!REGEXEMAIL.test(data.emailUsuario)) {
+          errores["errEmailUsuario"] = "Este no es un correo apto";
+        }
+      } else {
+        errores["errEmailUsuario"] = "Este campo es obligatorio";
       }
     } else {
-      errores["errEmailUsuario"] = "Este campo es obligatorio";
+      errores["errEmailUsuario"] = "Este email ya esta en uso";
     }
   } else {
-    errores["errEmailUsuario"] = "Este email ya esta en uso";
+    errores["errEmailUsuario"] = 'No se permite el uso de ""';
+  }
+
+  if (data.passUsuario != "") {
+    if (REGEXPASS.test(data.passUsuario)) {
+      if (data.passUsuario == data.passCheck) {
+      } else {
+        errores["errPassUsuario"] = "Las contraseñas tienen que ser iguales";
+      }
+    } else {
+      errores["errPassUsuario"] =
+        "Necesitas entre 4 y 20 caracteres. Minimo una minuscula, una mayuscula y un numero";
+    }
+  } else {
+    errores["errPassUsuario"] = "Las contraseñas son obligatorias";
   }
 
   return errores;
@@ -732,6 +760,9 @@ api.post(
   async (req, res) => {
     const data = req.body;
 
+    console.log("data");
+    console.log(data);
+
     let errores = await checkConjurosAddUpdate(req);
     errores = await checkNombreConjuroAdd(req, errores);
     errores = await checkImagen(req, errores);
@@ -742,8 +773,12 @@ api.post(
         const { destination, path, mimetype } = req.file;
         const tipoImagen = mimetype.split("/");
 
+        console.log(req.file);
+
         let nuevoNombre =
-          data.nombreConjuro.replace(" ", "_") + "." + tipoImagen[1];
+          data.nombreConjuro.trim().replace(/ /g, "_") + "." + tipoImagen[1];
+
+        console.log(nuevoNombre);
 
         fs.rename(path, "imagenes\\conjuros\\" + nuevoNombre, () => {
           console.log("\nFile Renamed!\n");
@@ -752,7 +787,11 @@ api.post(
         connect = await dbConnection.getConnection();
         const destinoImagen = "/" + destination + nuevoNombre;
 
-        let conjuroAdd = `INSERT INTO dramones_y_mazmorras.Conjuros (nombre_conjuro, nivel_conjuro, escuela_magia, tiempo_lanz, alcance, rango_area, somatico, verbal, material, material_desc, duracion, concentracion, ritual, imagen_conjuro, desc_corta, desc_larga) VALUES("${data.nombreConjuro}", ${data.nivelConjuro}, ${data.escuelaMagia}, ${data.tiempoLanzamiento}, ${data.alcanceLanzamiento}, "${data.rangoArea}"`;
+        let conjuroAdd = `INSERT INTO dramones_y_mazmorras.Conjuros (nombre_conjuro, nivel_conjuro, escuela_magia, tiempo_lanz, alcance, rango_area, somatico, verbal, material, material_desc, duracion, concentracion, ritual, imagen_conjuro, desc_corta, desc_larga) VALUES("${data.nombreConjuro.trim()}", ${
+          data.nivelConjuro
+        }, ${data.escuelaMagia}, ${data.tiempoLanzamiento}, ${
+          data.alcanceLanzamiento
+        }, "${data.rangoArea.trim()}"`;
 
         if (data.somatico == "") {
           conjuroAdd = `${conjuroAdd}, false`;
@@ -767,13 +806,15 @@ api.post(
         if (data.material != "true") {
           conjuroAdd = `${conjuroAdd}, false,null`;
         } else {
-          conjuroAdd = `${conjuroAdd}, true,"${data.materialDesc}"`;
+          conjuroAdd = `${conjuroAdd}, true,"${data.materialDesc.trim()}"`;
         }
 
         if (data.concentracion == "") {
-          conjuroAdd = `${conjuroAdd}, "${data.duracion}", false`;
+          conjuroAdd = `${conjuroAdd}, "${data.duracion.trim()}", false`;
         } else {
-          conjuroAdd = `${conjuroAdd}, "${data.duracion}", ${data.concentracion}`;
+          conjuroAdd = `${conjuroAdd}, "${data.duracion.trim()}", ${
+            data.concentracion
+          }`;
         }
         if (data.ritual == "") {
           conjuroAdd = `${conjuroAdd}, false`;
@@ -781,7 +822,7 @@ api.post(
           conjuroAdd = `${conjuroAdd}, ${data.ritual}`;
         }
 
-        conjuroAdd = `${conjuroAdd}, "${destinoImagen}", "${data.descCorta}", "${data.descLarga}")`;
+        conjuroAdd = `${conjuroAdd}, "${destinoImagen}", "${data.descCorta.trim()}", "${data.descLarga.trim()}")`;
 
         const filaConjuro = await connect.query(conjuroAdd);
         //res.send(fila.warningStatus.toString());
@@ -817,6 +858,7 @@ api.post(
 
         conjuroClase = conjuroClase.slice(0, -1);
         const filaClase = await connect.query(conjuroClase);
+        res.status(200).send("Añadido");
       } else {
         if (req.file != undefined) {
           const { originalname, destination } = req.file;
@@ -851,7 +893,10 @@ api.post(
       errores = await checkImagen(req, errores);
     }
 
-    console.log(req.file);
+    console.log("update");
+
+    console.log(errores);
+    console.log(data);
 
     let connect;
     try {
@@ -862,19 +907,31 @@ api.post(
 
         console.log(data);
 
-        let conjuroUpdate = `UPDATE dramones_y_mazmorras.Conjuros SET nombre_conjuro="${data.nombreConjuro}", nivel_conjuro=${data.nivelConjuro}, escuela_magia=${data.escuelaMagia}, tiempo_lanz=${data.tiempoLanzamiento}, alcance=${data.alcanceLanzamiento}, rango_area="${data.rangoArea}", somatico=${data.somatico}, verbal=${data.verbal}, material=${data.material}`;
+        let conjuroUpdate = `UPDATE dramones_y_mazmorras.Conjuros SET nombre_conjuro="${data.nombreConjuro.trim()}", nivel_conjuro=${
+          data.nivelConjuro
+        }, escuela_magia=${data.escuelaMagia}, tiempo_lanz=${
+          data.tiempoLanzamiento
+        }, alcance=${
+          data.alcanceLanzamiento
+        }, rango_area="${data.rangoArea.trim()}", somatico=${
+          data.somatico
+        }, verbal=${data.verbal}, material=${data.material}`;
 
         if (data.materialDesc == null) {
           ``;
           conjuroUpdate = conjuroUpdate + ",material_desc=" + null;
         } else {
           conjuroUpdate =
-            conjuroUpdate + `,material_desc="${data.materialDesc}"`;
+            conjuroUpdate + `,material_desc="${data.materialDesc.trim()}"`;
         }
 
         conjuroUpdate =
           conjuroUpdate +
-          `, duracion="${data.duracion}", concentracion=${data.concentracion}, ritual=${data.ritual}, desc_corta="${data.descCorta}", desc_larga="${data.descLarga}"`;
+          `, duracion="${data.duracion.trim()}", concentracion=${
+            data.concentracion
+          }, ritual=${
+            data.ritual
+          }, desc_corta="${data.descCorta.trim()}", desc_larga="${data.descLarga.trim()}"`;
 
         if (req.file != undefined) {
           const { originalname, destination, path, mimetype } = req.file;
@@ -887,7 +944,7 @@ api.post(
 
           const tipoImagen = mimetype.split("/");
           let nuevoNombre =
-            data.nombreConjuro.replace(" ", "_") + "." + tipoImagen[1];
+            data.nombreConjuro.trim().replace(/ /g, "_") + "." + tipoImagen[1];
 
           fs.rename(path, "imagenes\\conjuros\\" + nuevoNombre, () => {
             console.log("\nFile Renamed!\n");
@@ -934,6 +991,7 @@ api.post(
 
         conjuroUpdateClase = conjuroUpdateClase.slice(0, -1);
         const filaClase = await connect.query(conjuroUpdateClase);
+        res.status(200).send("Actualizado");
       } else {
         if (req.file != undefined) {
           const { originalname, destination } = req.file;
@@ -970,6 +1028,28 @@ api.get("/conjuros/:ID", ensureRole([1, 2]), async (req, res) => {
   } catch (err) {
     console.log(err);
     res.status(500).send("Error al obtener los usuarios");
+  } finally {
+    if (connect) connect.end();
+  }
+});
+
+api.get("/borrar/:ID", ensureRole([1, 2]), async (req, res) => {
+  let connect;
+  try {
+    connect = await dbConnection.getConnection();
+    const filaConjuro = await connect.query(
+      "DELETE FROM dramones_y_mazmorras.Conjuros WHERE ID_conjuro =" +
+        req.params.ID
+    );
+
+    const filaClase = await connect.query(
+      "DELETE FROM dramones_y_mazmorras.ConjurosPorClase WHERE id_conj=" +
+        req.params.ID
+    );
+    res.status(200).send("Conjuro borrado");
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error al borrar el conjuro");
   } finally {
     if (connect) connect.end();
   }
